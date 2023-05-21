@@ -7,90 +7,12 @@ env:
   qt: false
 
 jobs:
-  linux_build:
-    runs-on: ${{ matrix.ubuntu }}
-    strategy:
-      fail-fast: false
-      matrix:
-        obs: [27, 28]
-        ubuntu: ['ubuntu-20.04']
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-        with:
-          submodules: recursive
-
-      - name: Download obs-studio development environment
-        id: obsdeps
-        uses: norihiro/obs-studio-devel-action@v1-beta
-        with:
-          obs: ${{ matrix.obs }}
-          verbose: true
-          qt: ${{ env.qt }}
-
-      - name: Build plugin
-        run: |
-          set -ex
-          sudo apt install libvncserver-dev
-          OBS_QT_VERSION_MAJOR=${{ steps.obsdeps.outputs.OBS_QT_VERSION_MAJOR }}
-          mkdir build
-          cd build
-          case ${{ matrix.obs }} in
-            27)
-              cmake_opt=(
-                -D CMAKE_INSTALL_LIBDIR=/usr/lib/
-                -D CPACK_DEBIAN_PACKAGE_DEPENDS='obs-studio (>= 27), obs-studio (<< 28)'
-              )
-              ;;
-            28)
-              cmake_opt=(
-                -D CPACK_DEBIAN_PACKAGE_DEPENDS='obs-studio (>= 28)'
-              )
-              ;;
-          esac
-          cmake .. \
-            -D QT_VERSION=$OBS_QT_VERSION_MAJOR \
-            -D CMAKE_INSTALL_PREFIX=/usr \
-            -D CMAKE_BUILD_TYPE=RelWithDebInfo \
-            -D LINUX_PORTABLE=OFF \
-            -D CPACK_DEBIAN_PACKAGE_SHLIBDEPS=ON \
-            -D PKG_SUFFIX=-obs${{ matrix.obs }}-${{ matrix.ubuntu }}-x86_64 \
-            "${cmake_opt[@]}"
-          make -j4
-          make package
-          echo "FILE_NAME=$(find $PWD -name '*.deb' | head -n 1)" >> $GITHUB_ENV
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: ${{ env.artifactName }}
-          path: '${{ env.FILE_NAME }}'
-      - name: Check package
-        run: |
-          . ci/ci_includes.generated.sh
-          set -ex
-          sudo apt install '${{ env.FILE_NAME }}'
-          case ${{ matrix.obs }} in
-            27) plugins_dir=/usr/lib/obs-plugins ;;
-            28) plugins_dir=/usr/lib/x86_64-linux-gnu/obs-plugins ;;
-          esac
-          ldd $plugins_dir/${PLUGIN_NAME}.so > ldd.out
-          if grep not.found ldd.out ; then
-            echo "Error: unresolved shared object." >&2
-            exit 1
-          fi
-          ls /usr/share/obs/obs-plugins/${PLUGIN_NAME}/
-
   macos_build:
-    runs-on: macos-12
+    runs-on: macos-13
     strategy:
       fail-fast: false
       matrix:
         include:
-          - obs: 27
-            arch: x86_64
           - obs: 28
             arch: arm64
     defaults:
@@ -262,65 +184,6 @@ jobs:
           path: package/*
           keychainProfile: AC_PASSWORD
           verbose: true
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: ${{ env.artifactName }}
-          path: package/*
-
-  windows_build:
-    runs-on: windows-2022
-    strategy:
-      fail-fast: false
-      matrix:
-        obs: [27]
-        arch: [x64]
-    env:
-      visualStudio: 'Visual Studio 17 2022'
-      Configuration: 'RelWithDebInfo'
-      LIBVNCPath: ${{ github.workspace }}\libvncserver
-      OBSDeps: ${{ github.workspace }}\obs-build-dependencies\plugin-deps-x64
-    defaults:
-      run:
-        shell: pwsh
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-        with:
-          submodules: recursive
-      - name: Download obs-studio
-        id: obsdeps
-        uses: norihiro/obs-studio-devel-action@v1-beta
-        with:
-          obs: ${{ matrix.obs }}
-          qt: ${{ env.qt }}
-
-      - name: Build libvncserver
-        shell: bash
-        run: ci/windows/install-libvncserver.sh
-        env:
-          CMakeOptA: x64
-          build_config: RelWithDebInfo
-
-      - name: Build plugin
-        run: |
-          $CmakeArgs = @(
-            '-G', "${{ env.visualStudio }}"
-            '-DQT_VERSION=${{ steps.obsdeps.outputs.OBS_QT_VERSION_MAJOR }}'
-            '-DCMAKE_SYSTEM_VERSION=10.0.18363.657'
-            "-DCMAKE_INSTALL_PREFIX=$(Resolve-Path -Path "./obs-build-dependencies/plugin-deps-${{ matrix.arch }}")"
-            "-DCMAKE_PREFIX_PATH=$(Resolve-Path -Path "./obs-build-dependencies/plugin-deps-${{ matrix.arch }}")"
-            "-DLIBVNCCLIENT_INCLUDE_DIRS=${{ env.LIBVNCPath }}"
-            "-DLIBVNCCLIENT_STATIC_LIBRARY_DIRS=${{ env.LIBVNCPath }}"
-            "-DLIBVNCCLIENT_STATIC_LIBRARIES=${{ env.LIBVNCPath }}\RelWithDebInfo\vncclient.lib;${{ env.OBSDeps }}\lib\zlib.lib;${{ env.LIBVNCPath }}\deps\lzo\build\RelWithDebInfo\lzo2.lib;${{ env.LIBVNCPath }}\deps\libpng\RelWithDebInfo\libpng16_static.lib;${{ env.LIBVNCPath }}\deps\libjpeg\RelWithDebInfo\turbojpeg-static.lib;wsock32.lib;ws2_32.lib"
-          )
-          cmake -S . -B build @CmakeArgs
-          cmake --build build --config RelWithDebInfo -j 4
-          cmake --install build --config RelWithDebInfo --prefix "$(Resolve-Path -Path .)/release"
-
-      - name: Package plugin
-        run: ci/windows/package-windows.cmd ${{ matrix.obs }}
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v3
