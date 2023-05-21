@@ -74,6 +74,7 @@ jobs:
 
       - name: Install libvncserver
         run: |
+          brew install libssh2
           export arch=${{ matrix.arch }}
           export deps=/tmp/deps-${{ matrix.obs }}-${{ matrix.arch }}
           ci/macos/install-libvncserver-${{ matrix.arch }}.sh
