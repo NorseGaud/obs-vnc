@@ -1,19 +1,6 @@
 name: Plugin Build
 
-on:
-  workflow_dispatch:
-  push:
-    paths-ignore:
-      - '**.md'
-    branches:
-      - main
-    tags:
-      - '*'
-  pull_request:
-    paths-ignore:
-      - '**.md'
-    branches:
-      - main
+on: workflow_dispatch
 
 env:
   artifactName: ${{ contains(github.ref_name, '/') && 'artifact' || github.ref_name }}
